@@ -9,7 +9,11 @@ from whatsapp.adapters.middleware import PubSubProxy
 
 def callback(user, message):
     """Shows message"""
-    print(f'{user}: {message}\n(Cmd) ')
+    print(f'{user}: {message}\n(Cmd) ', end='')
+
+
+class ExitCmdException(Exception):
+    pass
 
 
 class TopicPrompt(Cmd):
@@ -56,7 +60,6 @@ class TopicPrompt(Cmd):
             ports (str): Input and output port
         """
         int_ports: List[int] = list(map(int, ports.split(' ')))
-
         PubSubProxy(
             int_ports[0],
             int_ports[1]
@@ -82,10 +85,15 @@ class TopicPrompt(Cmd):
         if self._subscriber is None:
             print('No connection available')
         else:
-            all_message = message.split(' ')
+            all_message = message.replace('\n', '').split(' ')
             topic = all_message[0]
             complete_message = reduce(lambda x, y: f'{x} {y}', all_message[1:])
             self._subscriber.send(topic, self._user, complete_message)
+
+    def do_exit(self, *args):
+        for thread in self._subscriber._thread_pool:
+            self._subscriber.remove(thread)
+        raise ExitCmdException()
 
     def do_set_user(self, user: str):
         """Command to configure user
@@ -93,4 +101,5 @@ class TopicPrompt(Cmd):
         Args:
             user (str): Username
         """
+        self.do_enter_topic(user)
         self._user = user
