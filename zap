@@ -15,7 +15,7 @@ def main():
 
     args = parser.parse_args()
     prompt = TopicPrompt()
-    pattern = re.compile(r'(tcp:\/\/[a-zA-Z0-9]+):(\d{1,5})\-(\d{1,5})')
+    pattern = re.compile(r'(tcp:\/\/[a-zA-Z0-9\.]+):(\d{1,5})\-(\d{1,5})')
 
     if args.address:
         address, input_port, output_port = re.findall(pattern, args.address)[0]
