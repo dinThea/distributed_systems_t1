@@ -8,6 +8,7 @@ authors = ["Iago Elias <iagoelifa@gmail.com>"]
 python = "^3.8"
 pyzmq = "^23.2.0"
 Kivy = "^2.1.0"
+zmq = "^0.0.0"
 
 [tool.poetry.dev-dependencies]
 pylint = "^2.14.5"
