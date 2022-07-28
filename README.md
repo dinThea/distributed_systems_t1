@@ -1,5 +1,10 @@
 # Atividade de Sistemas Distribuidos (WhatsApp)
 
+## Aluno
+### RA: ```759027```
+### Nome: ```Iago Elias de Faria Barbosa```
+
+## Objetivos
 Interface cli para criação de servidor e client de chat.
 A aplicação é dividida em duas partes, acessíveis por uma mesma interface. As partes são:
 - Aplicação Proxy/Middleware para a disponibilização de um servidor Pub/Sub.
