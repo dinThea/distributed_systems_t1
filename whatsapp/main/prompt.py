@@ -1,10 +1,11 @@
 from cmd import Cmd
 from functools import reduce
-from typing import IO, Any, List, Optional, Union
+from typing import IO, List, Union
 from uuid import uuid4
-import zmq
-from whatsapp.adapters.strategies import ThreadSubscriberTopicPoolAdder
+from whatsapp.adapters.controller import MQControllerStub
+from whatsapp.adapters.strategies import ZmqTopicStrategies
 from whatsapp.adapters.middleware import PubSubProxy
+from whatsapp.app.use_cases import ListTopics, SendMessageToTopic, SubscribeToTopic, UnsubscribeFromTopic
 
 
 def callback(user, message):
@@ -16,6 +17,41 @@ class ExitCmdException(Exception):
     pass
 
 
+def create_controller(
+    remote_addr: str,
+    server_port: int,
+    topic_port: int
+):
+    """Concrete factory to create the server stub
+
+    Args:
+        remote_addr (str): Remote address of server
+        server_port (int): Remote port to send messages
+        topic_port (int): Remote port to subscribe
+    """
+
+    strategies = ZmqTopicStrategies(
+        remote_addres=remote_addr,
+        server_port=server_port,
+        topic_port=topic_port
+    )
+
+    return MQControllerStub(
+        subscriber=SubscribeToTopic(
+            topic_pool_manager_adder=strategies
+        ),
+        unsubscriber=UnsubscribeFromTopic(
+            topic_pool_manager_remover=strategies
+        ),
+        sender=SendMessageToTopic(
+            topic_message_sender=strategies
+        ),
+        lister=ListTopics(
+            topic_lister=strategies
+        )
+    )
+
+
 class TopicPrompt(Cmd):
     def __init__(
         self,
@@ -24,9 +60,7 @@ class TopicPrompt(Cmd):
         stdout: Union[IO[str], None] = None,
     ) -> None:
         self._user = str(uuid4())
-        self._subscriber: Optional[ThreadSubscriberTopicPoolAdder] = None
-        self._ctx: Optional[zmq.Context[zmq.Socket[Any]]] = None
-        self._client: Optional[zmq.Socket[Any]] = None
+        self._controller = None
         super().__init__(completekey, stdin, stdout)
 
     def do_connect(self, address_and_ports: str):
@@ -36,11 +70,7 @@ class TopicPrompt(Cmd):
             address_and_ports (str): Address and ports of the proxy connector
         """
         address, input_port, subscribe_port = address_and_ports.split(' ')
-        self._subscriber = ThreadSubscriberTopicPoolAdder(
-            remote_addres=address,
-            server_port=int(input_port),
-            topic_port=int(subscribe_port)
-        )
+        self._controller = create_controller(address, int(input_port), int(subscribe_port))
 
     def do_enter_topic(self, topic: str):
         """Command to enter a topic
@@ -48,10 +78,10 @@ class TopicPrompt(Cmd):
         Args:
             topic (str): Topic name
         """
-        if self._subscriber is None:
+        if self._controller is None:
             print('No connection available')
         else:
-            self._subscriber.add(topic, callback)
+            self._controller.add(topic, callback)
 
     def do_serve(self, ports: str):
         """Serves the middleware
@@ -71,10 +101,10 @@ class TopicPrompt(Cmd):
         Args:
             topic (str): Topic name
         """
-        if self._subscriber is None:
+        if self._controller is None:
             print('No connection available')
         else:
-            self._subscriber.remove(topic)
+            self._controller.remove(topic)
 
     def do_send(self, message: str):
         """Command to send message to topic
@@ -82,17 +112,17 @@ class TopicPrompt(Cmd):
         Args:
             message (str): Message with topic and content
         """
-        if self._subscriber is None:
+        if self._controller is None:
             print('No connection available')
         else:
             all_message = message.replace('\n', '').split(' ')
             topic = all_message[0]
             complete_message = reduce(lambda x, y: f'{x} {y}', all_message[1:])
-            self._subscriber.send(topic, self._user, complete_message)
+            self._controller.send(topic, self._user, complete_message)
 
     def do_exit(self, *args):
-        for thread in self._subscriber._thread_pool:
-            self._subscriber.remove(thread)
+        for topic in self._controller.list():
+            self._controller.remove(topic)
         raise ExitCmdException()
 
     def do_set_user(self, user: str):

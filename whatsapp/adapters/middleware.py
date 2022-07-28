@@ -1,6 +1,4 @@
 """Defines middleware for pubsub"""
-import binascii
-import os
 import zmq
 
 
@@ -36,7 +34,7 @@ class PubSubProxy:
         """
         try:
             zmq.device(zmq.FORWARDER, self.server, self.publisher)  # pylint: disable=no-member
-        except Exception as _:
+        except Exception as _:  # pylint: disable=broad-except
             self.stop()
 
     def stop(self):

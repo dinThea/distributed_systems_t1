@@ -10,7 +10,13 @@ from typing import (
 )
 import re
 import zmq
-from whatsapp.app.use_cases import TopicPoolManagerAdder, TopicPoolManagerRemover, messageCallback
+from whatsapp.app.use_cases import (
+    TopicAdder,
+    TopicLister,
+    TopicMessageSender,
+    TopicRemover,
+    messageCallback
+)
 
 
 def subscriber_thread(
@@ -45,7 +51,7 @@ def subscriber_thread(
             data = control.get(False)
         except Empty:
             data = None
-        except Exception as _:
+        except Exception as _:  # pylint: disable=broad-except
             continue
 
 
@@ -57,9 +63,11 @@ class Topic:
     control: Queue
 
 
-class ThreadSubscriberTopicPoolAdder(
-    TopicPoolManagerAdder,
-    TopicPoolManagerRemover
+class ZmqTopicStrategies(
+    TopicAdder,
+    TopicRemover,
+    TopicMessageSender,
+    TopicLister
 ):
     """Implementation of the topic functions
     """
@@ -79,11 +87,23 @@ class ThreadSubscriberTopicPoolAdder(
         self._client.connect(f"{self._address}:{self._server_port}")
 
     def send(self, topic: str, user: str, message: str):
+        """Sends messages to topic
 
+        Args:
+            topic (str): Topic to receive message
+            user (str): User sending the message
+            message (str): Message in question
+        """
         self._client.send(f'{topic}.{user}.{message}'.encode('utf-8'))
 
     def add(self, topic_id: str, callback: messageCallback):
+        """Add user (connection) to topic, setting a callback as \
+            receiver
 
+        Args:
+            topic_id (str): Topic to connect to
+            callback (messageCallback): Callback to be called on message
+        """
         control: Queue = Queue()
         self._thread_pool[topic_id] = Topic(  # type: ignore
             thread=Thread(
@@ -101,4 +121,17 @@ class ThreadSubscriberTopicPoolAdder(
         self._thread_pool[topic_id].thread.start()
 
     def remove(self, topic_id: str):
+        """Remove user from topic
+
+        Args:
+            topic_id (str): Topic to remove user from
+        """
         self._thread_pool[topic_id].control.put('control')
+
+    def list(self) -> List[str]:
+        """List topics from connection
+
+        Returns:
+            List[str]: List of topics
+        """
+        return [thread for thread in self._thread_pool]
