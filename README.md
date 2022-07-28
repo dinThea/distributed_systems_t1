@@ -26,6 +26,11 @@ curl -sSL https://raw.githubusercontent.com/python-poetry/poetry/master/get-poet
 (Invoke-WebRequest -Uri https://raw.githubusercontent.com/python-poetry/poetry/master/get-poetry.py -UseBasicParsing).Content | python -
 ```
 
+Exporte o caminho do executável do poetry para o PATH:
+```bash
+export PATH=$PATH:$HOME/.poetry/bin
+```
+
 Após a instação do poetry, basta executar:
 
 ```bash
