@@ -1,10 +1,14 @@
+"""Defines strategies to connect to a proxy"""
 from dataclasses import dataclass
+from queue import Queue, Empty
 import functools
 from threading import Thread
+from time import sleep
 from typing import (
     List,
     Mapping
 )
+import re
 import zmq
 from whatsapp.app.use_cases import TopicPoolManagerAdder, TopicPoolManagerRemover, messageCallback
 
@@ -14,7 +18,7 @@ def subscriber_thread(
     port: int,
     topic: str,
     callback: messageCallback,
-    control: bool
+    control: Queue
 ):
     """Thread to call an subscribe to an thread
 
@@ -28,17 +32,21 @@ def subscriber_thread(
     subscriber = ctx.socket(zmq.SUB)
     subscriber.connect(f"{address}:{port}")
     subscriber.setsockopt(zmq.SUBSCRIBE, topic.encode('utf-8'))
-
-    while control:
+    data = None
+    while data is None:
         try:
-            msg: List[bytes] = subscriber.recv_multipart()
-            user, message = msg[0].decode('utf-8').replace(f'{topic}.', '').split('.')
+            msg: List[bytes] = subscriber.recv_multipart(flags=zmq.NOBLOCK)
+            decoded = msg[0].decode('utf-8')
+            user, message = re.sub('^'+topic+r'\.', '', decoded).split('.')
             callback(user, message)
-        except zmq.ZMQError as exception:
-            if exception.errno == zmq.ETERM:
-                break
-            else:
-                raise
+        except zmq.ZMQError as _:
+            sleep(.01)
+        try:
+            data = control.get(False)
+        except Empty:
+            data = None
+        except Exception as _:
+            continue
 
 
 @dataclass
@@ -46,7 +54,7 @@ class Topic:
     """Strategy topic data class
     """
     thread: Thread
-    control: bool
+    control: Queue
 
 
 class ThreadSubscriberTopicPoolAdder(
@@ -67,17 +75,16 @@ class ThreadSubscriberTopicPoolAdder(
         self._server_port = server_port
         self._topic_port = topic_port
         self._ctx = zmq.Context.instance()
-        self._client = self._ctx.socket(zmq.REQ)
+        self._client = self._ctx.socket(zmq.PUB)
         self._client.connect(f"{self._address}:{self._server_port}")
 
     def send(self, topic: str, user: str, message: str):
 
         self._client.send(f'{topic}.{user}.{message}'.encode('utf-8'))
-        _ = self._client.recv()
 
     def add(self, topic_id: str, callback: messageCallback):
 
-        control = True
+        control: Queue = Queue()
         self._thread_pool[topic_id] = Topic(  # type: ignore
             thread=Thread(
                 target=functools.partial(
@@ -94,4 +101,4 @@ class ThreadSubscriberTopicPoolAdder(
         self._thread_pool[topic_id].thread.start()
 
     def remove(self, topic_id: str):
-        self._thread_pool[topic_id].control = False
+        self._thread_pool[topic_id].control.put('control')
